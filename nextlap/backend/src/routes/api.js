@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { careers, courses, opportunities } from "../data.js";
-import { createAthlete, getDashboard, getDemoAthlete, getRecommendedCourses, updateFinancial, updateCourse, toggleSavedCourse, toggleOpportunity, updateModule, buildRoadmap, updateRoadmapTask } from "../services/athleteService.js";
+import { createAthlete, getDashboard, getDemoAthlete, getRecommendedCourses, updateFinancial, updateCourse, toggleSavedCourse, toggleOpportunity, updateModule, buildRoadmap, updateRoadmapTask, askMardarshak } from "../services/athleteService.js";
 import { validate } from "../middleware/validate.js";
 
 const router = Router();
@@ -42,6 +42,15 @@ router.get("/opportunities", (req, res) => {
   res.json(result);
 });
 router.get("/demo", (_, res) => res.json(getDemoAthlete()));
+
+router.post("/chat", async (req, res) => {
+  // Only the question needs strict validation. Profile/dashboard data is client context
+  // and may contain nested arrays, nulls, or fields added by future dashboard features.
+  const schema = z.object({ athlete: z.any().optional(), dashboard: z.any().optional(), message: z.string().trim().min(1, "Question cannot be empty").max(1200), history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).max(10).optional().default([]), language: z.enum(["en", "hi"]).optional().default("en") });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Please type a question before sending." });
+  try { res.json({ reply: await askMardarshak(parsed.data) }); } catch (error) { res.status(502).json({ error: error.message }); }
+});
 
 router.post("/athletes", validate(athleteSchema), (req, res) => {
   res.status(201).json(createAthlete(req.body));

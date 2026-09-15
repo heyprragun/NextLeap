@@ -69,12 +69,19 @@ function financialAssessment(financial = {}) {
   return { score, strong: [...new Set(strong)], attention: [...new Set(attention)], modules: financeModules };
 }
 
+function profileCompleteness(athlete) {
+  const fields = [athlete.name, athlete.sport, athlete.level, athlete.role, athlete.experience, athlete.achievements, athlete.interests?.length, athlete.careerInterests?.length];
+  return Math.round(fields.filter(Boolean).length / fields.length * 100);
+}
+
 function matchesForAthlete(athlete) {
   const skillNames = athlete.skills.map((skill) => skill.name);
   return careers.map((career) => {
     const overlap = career.skills.filter((skill) => skillNames.includes(skill));
     const requested = (athlete.careerInterests || []).some((interest) => career.title.toLowerCase().includes(String(interest).toLowerCase()));
-    return { ...career, match: Math.min(98, career.match + overlap.length * 3 + (requested ? 6 : 0)), why: overlap, skillGaps: career.gaps };
+    const experience = athlete.years ? `${athlete.years} years of ${athlete.sport} experience` : `your ${athlete.sport} experience`;
+    const strengths = overlap.length ? overlap.slice(0, 2).join(" and ") : "your sporting profile";
+    return { ...career, match: Math.min(98, career.match + overlap.length * 3 + (requested ? 6 : 0)), why: overlap, skillGaps: career.gaps, whySentence: `Matches your ${experience} and strengths in ${strengths}.` };
   }).sort((a, b) => b.match - a.match);
 }
 
@@ -111,8 +118,21 @@ export function getDashboard(id) {
   const roadmap = buildRoadmap(id);
   const financial = financialAssessment(athlete.financial);
   const completedCourses = Object.values(athlete.courseProgress).filter((item) => item.status === "Completed").length;
+  const completedModules = athlete.completedModules.length;
   const completedTasks = Object.values(athlete.roadmapTasks).filter(Boolean).length;
-  return { athlete, financialScore: financial.score, financial, careerMatches: careerMatches.slice(0, 6), opportunities: selectedOpportunities.slice(0, 6), courses: learning, roadmap, stats: { completedCourses, savedOpportunities: athlete.savedOpportunities.length, completedTasks, learningStreak: completedCourses ? completedCourses * 3 : 0 }, readiness: { career: Math.min(96, 55 + athlete.skills.length * 5), financial: financial.score, skills: Math.min(96, 58 + athlete.skills.length * 5), opportunity: Math.min(96, 52 + selectedOpportunities.filter((item) => item.matchedSkills.length).length * 6) } };
+  const completeness = profileCompleteness(athlete);
+  const mappedSkills = athlete.skills.length;
+  const matchedOpportunities = selectedOpportunities.filter((item) => item.matchedSkills.length).length;
+  const readiness = {
+    career: Math.min(96, Math.round(35 + completeness * 0.35 + mappedSkills * 3)),
+    financial: Math.min(96, financial.score + completedModules * 4),
+    skills: Math.min(96, Math.round(35 + mappedSkills * 6 + completeness * 0.15)),
+    opportunity: Math.min(96, Math.round(35 + matchedOpportunities * 7 + completeness * 0.2)),
+    profileCompleteness: completeness,
+    mappedSkills,
+    completedModules
+  };
+  return { athlete, financialScore: readiness.financial, financial, careerMatches: careerMatches.slice(0, 6), opportunities: selectedOpportunities.slice(0, 6), courses: learning, roadmap, stats: { completedCourses, savedOpportunities: athlete.savedOpportunities.length, completedTasks, learningStreak: completedCourses ? completedCourses * 3 : 0 }, readiness };
 }
 
 export function updateFinancial(id, financial) {
@@ -159,11 +179,12 @@ export function buildRoadmap(id) {
   const career = matchesForAthlete(athlete)[0];
   const firstCourse = courses.find((course) => course.careerIds.includes(career.id));
   const items = [
-    { id: "task-profile", text: "Complete your transferable-skill profile", phase: "Days 01–07" },
-    { id: "task-course", text: `Start ${firstCourse?.title || "your first learning resource"}`, phase: "Days 08–30", courseId: firstCourse?.id },
+    { id: "task-profile", text: "Complete your transferable-skill profile", phase: "Days 01–30" },
+    { id: "task-course", text: `Start ${firstCourse?.title || "your first learning resource"}`, phase: "Days 01–30", courseId: firstCourse?.id },
     { id: "task-project", text: `Build a small ${career.title.toLowerCase()} project`, phase: "Days 31–60" },
-    { id: "task-opportunity", text: "Apply to 3 relevant opportunities", phase: "Days 61–75" },
-    { id: "task-review", text: "Review your progress and choose the next milestone", phase: "Days 76–90" }
+    { id: "task-network", text: `Speak with one ${career.title.toLowerCase()} professional`, phase: "Days 31–60" },
+    { id: "task-opportunity", text: "Apply to 3 relevant opportunities", phase: "Days 61–90" },
+    { id: "task-review", text: "Review your progress and choose the next milestone", phase: "Days 61–90" }
   ];
   return items.map((item) => ({ ...item, done: Boolean(athlete.roadmapTasks[item.id]) }));
 }
@@ -184,4 +205,18 @@ export function getDemoAthlete() {
   athlete.savedOpportunities = ["opp-1", "opp-4"];
   athlete.roadmapTasks = { "task-profile": true, "task-course": true };
   return getDashboard(athlete.id);
+}
+
+export async function askMardarshak({ athlete, dashboard, message, history = [], language = "en" }) {
+  const profile = athlete || { name: "Athlete", sport: "not provided", level: "not provided", years: 0, skills: [] };
+  const fallback = language === "hi"
+    ? `${profile.sport === "not provided" ? "अपनी प्रोफाइल बनाकर" : `आपकी ${profile.years} साल की ${profile.sport} यात्रा और ${profile.skills?.slice(0, 2).map((skill) => skill.name).join(" और ")} आपकी बड़ी ताकत हैं।`} इस सवाल पर अगला छोटा कदम तय करने के लिए अपने 90-दिन के प्लान से शुरुआत करें।`
+    : `${profile.sport === "not provided" ? "Build your athlete profile so I can personalize this advice." : `Your ${profile.years} years in ${profile.sport} and strengths in ${profile.skills?.slice(0, 2).map((skill) => skill.name).join(" and ")} are strong foundations.`} Start with one small action from your 90-day plan and build evidence as you go.`;
+  if (!process.env.GROQ_API_KEY) return fallback;
+  const system = `You are Mardarshak, a warm, practical career and financial resilience coach for athletes. Answer in ${language === "hi" ? "Hindi" : "English"}. Give a complete answer in 4-8 short paragraphs or bullets. If comparing financial options, use a compact bullet list rather than a markdown table. End with one clear next action. Personalize advice using the athlete profile below. Never claim to be a financial adviser; for money, give educational guidance and suggest a qualified professional for products, tax, insurance, or investments. Do not invent jobs, credentials, or personal facts. Athlete profile: ${JSON.stringify({ name: profile.name, sport: profile.sport, level: profile.level, years: profile.years, role: profile.role, achievements: profile.achievements, interests: profile.interests, skills: profile.skills?.map((skill) => skill.name), topCareers: dashboard?.careerMatches?.slice(0, 3).map((career) => career.title), readiness: dashboard?.readiness })}`;
+  const messages = [{ role: "system", content: system }, ...history.slice(-4).map((item) => ({ role: item.role === "assistant" ? "assistant" : "user", content: String(item.content).slice(0, 900) })), { role: "user", content: String(message).slice(0, 1200) }];
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, body: JSON.stringify({ model: process.env.GROQ_MODEL || "openai/gpt-oss-120b", messages, temperature: 0.55, reasoning_effort: "low", max_tokens: 1200 }) });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error?.message || "Mardarshak is unavailable right now");
+  return body.choices?.[0]?.message?.content?.trim() || fallback;
 }
