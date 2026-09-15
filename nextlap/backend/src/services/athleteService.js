@@ -38,7 +38,8 @@ function deriveSkills(profile) {
   ["Discipline", "Goal Setting", "Adaptability", "Performance Mindset"].forEach((skill) => scores.set(skill, (scores.get(skill) || 0) + 1));
   return [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, score], index) => {
     const [why, strengthen] = skillDetails[name] || ["Your sporting profile points to this transferable strength.", "Use it in a small project and capture evidence."];
-    return { name, score: Math.min(96, 66 + score * 7 - index * 2), why, strengthen };
+    const sportSkill = name === "Leadership" ? `${profile.role || "Team leadership"} in ${profile.sport || "sport"}` : name === "Mentoring" ? "Mentoring younger athletes" : name === "Decision Making" ? "Making fast match-day decisions" : name === "Pressure Handling" ? "Competing in high-stakes tournaments" : name === "Discipline" ? `${profile.years || "Consistent"} years of structured training` : name === "Communication" ? "Explaining tactics and giving teammate feedback" : name === "Goal Setting" ? "Training toward tournament targets" : name === "Teamwork" ? "Coordinating with teammates during competition" : "Recovering and adapting after setbacks";
+    return { name, score: Math.min(96, 66 + score * 7 - index * 2), why, strengthen, sportSkill };
   });
 }
 

@@ -36,6 +36,7 @@ function App() {
     try { const next = await api("/api/demo"); setAthleteId(next.athlete.id); setDashboard(next); localStorage.setItem("nextlapAthlete", next.athlete.id); setLanguage("en"); go("dashboard"); showToast("Demo athlete loaded"); }
     catch (error) { showToast(error.message); }
   };
+  const exitDemo = () => { setView("home"); setDashboard(null); setAthleteId(""); localStorage.removeItem("nextlapAthlete"); setMobile(false); showToast("Demo mode exited"); };
 
   return <div className="app">
     <header className="nav">
@@ -47,7 +48,7 @@ function App() {
         <button onClick={() => go("how")}>{t("nav.how")}</button>
       </nav>
       <div className="navTools"><button className={language === "en" ? "lang active" : "lang"} onClick={() => setLanguage("en")}>EN</button><button className={language === "hi" ? "lang active" : "lang"} onClick={() => setLanguage("hi")}>हिंदी</button><button className="menu" onClick={() => setMobile(!mobile)} aria-label="Open menu">{mobile ? <X /> : <Menu />}</button></div>
-      <button className="navCta" onClick={openDashboard}>{t("nav.build")} <ArrowRight size={16} /></button>
+      {dashboard?.athlete?.isDemo ? <button className="exitDemo" onClick={exitDemo}>{t("nav.exitDemo")} <X size={14} /></button> : <button className="navCta" onClick={openDashboard}>{t("nav.build")} <ArrowRight size={16} /></button>}
     </header>
 
     {view === "home" && <Home onStart={openDashboard} onHow={() => go("how")} onDemo={loadDemo} />}
@@ -98,7 +99,7 @@ function Dashboard({ data, onRefresh, onToast }) {
   const readiness = Math.round((data.readiness.career + data.readiness.financial + data.readiness.skills + data.readiness.opportunity) / 4);
   return <main className="dashboardPage"><div className="dashTop"><div><div className="eyebrow">ATHLETE DASHBOARD</div><h1>{t("dashboard.welcome")}, {data.athlete.name.split(" ")[0]}.</h1><p>{t("dashboard.subtitle")} {data.stats.completedTasks ? `${data.stats.completedTasks}/5 roadmap tasks complete.` : "Start with one small action today."}</p></div><div className="dashStats"><span>{data.stats.completedCourses} learning goals</span><span>{data.stats.savedOpportunities} saved opportunities</span></div></div>
     <section className="readinessGrid"><div className="readinessCard mainReadiness"><div><span className="muted">OVERALL READINESS</span><strong>{readiness}%</strong><small>{data.stats.learningStreak ? `Learning streak: ${data.stats.learningStreak} days` : "Based on your current profile"}</small></div><div className="ring" style={{ "--p": `${readiness}%` }}><span>{readiness}</span></div></div><Score title={t("dashboard.career")} value={data.readiness.career} icon={<Compass />} /><Score title={t("dashboard.skills")} value={data.readiness.skills} icon={<Target />} /><Score title={t("dashboard.opportunity")} value={data.readiness.opportunity} icon={<BriefcaseBusiness />} /></section>
-    <section className="dashGrid"><SkillPassport skills={data.athlete.skills} /><CareerRadar careers={data.careerMatches} selected={selectedCareer} onSelect={selectCareer} t={t} /></section>
+    <section className="dashGrid"><SkillPassport skills={data.athlete.skills} sport={data.athlete.sport} /><CareerRadar careers={data.careerMatches} selected={selectedCareer} onSelect={selectCareer} t={t} /></section>
     <section className="dashGrid"><LearningPanel courses={courses} athleteId={data.athlete.id} onUpdate={refresh} onToast={onToast} t={t} /><FinancePanel data={data} athleteId={data.athlete.id} onUpdate={refresh} onToast={onToast} t={t} /></section>
     <section className="dashGrid"><OpportunityPanel opportunities={data.opportunities} athleteId={data.athlete.id} onUpdate={refresh} onToast={onToast} t={t} /><Roadmap data={data} athleteId={data.athlete.id} onUpdate={refresh} t={t} /></section>
   </main>;
@@ -106,9 +107,15 @@ function Dashboard({ data, onRefresh, onToast }) {
 
 function Score({ title, value, icon }) { return <div className="readinessCard"><div className="miniIcon">{icon}</div><span>{title}</span><strong>{value}%</strong><div className="miniBar"><i style={{ width: `${value}%` }} /></div></div>; }
 
-function SkillPassport({ skills = [] }) {
-  const { t } = useI18n(); const [selected, setSelected] = useState(skills[0]);
-  return <div className="panel"><div className="panelHead"><div><div className="eyebrow">01 • {t("dashboard.skillPassport")}</div><h2>{t("dashboard.skillTitle")}</h2></div><Award /></div><div className="skillBars">{skills.map((skill) => <button className={selected?.name === skill.name ? "skillRow selected" : "skillRow"} key={skill.name} onClick={() => setSelected(skill)}><div><span>{skill.name}</span><b>{skill.score}%</b></div><i><span style={{ width: `${skill.score}%` }} /></i></button>)}</div>{selected && <div className="detailBox"><b>{t("dashboard.why")}</b><p>{selected.why}</p><b>{t("dashboard.strengthen")}</b><p>{selected.strengthen}</p></div>}</div>;
+function SkillPassport({ skills = [], sport = "your sport" }) {
+  const { t } = useI18n();
+  const [selected, setSelected] = useState(skills[0]);
+  const mappings = skills.slice(0, 6).map((skill, index) => ({
+    ...skill,
+    trait: skill.sportSkill || ["Team captaincy", "Tournament competition", "Seven years of training", "Mentoring younger athletes", "Match-day decisions", "Recovery after setbacks"][index] || `${sport} experience`
+  }));
+  const active = selected?.name;
+  return <div className="panel skillPassport"><div className="panelHead"><div><div className="eyebrow">01 • {t("dashboard.skillPassport")}</div><h2>{t("dashboard.skillTitle")}</h2><p className="passportIntro">Select a sporting trait to see the professional skill it proves.</p></div><Award /></div><div className="mapping" role="list" aria-label="Transferable skill mapping"><div className="mappingCol traits"><span className="mappingLabel">SPORTING EVIDENCE</span>{mappings.map((skill) => <button className={active === skill.name ? "mappingNode active" : "mappingNode"} key={`trait-${skill.name}`} onClick={() => setSelected(skill)} onMouseEnter={() => setSelected(skill)}>{skill.trait}</button>)}</div><svg className="mappingLines" viewBox={`0 0 120 ${Math.max(180, mappings.length * 48)}`} preserveAspectRatio="none" aria-hidden="true">{mappings.map((skill, index) => <path key={skill.name} className={active === skill.name ? "mappingLine active" : "mappingLine"} d={`M 8 ${24 + index * 48} C 45 ${24 + index * 48}, 75 ${24 + index * 48}, 112 ${24 + index * 48}`} />)}</svg><div className="mappingCol jobs"><span className="mappingLabel">PROFESSIONAL SKILL</span>{mappings.map((skill) => <button className={active === skill.name ? "mappingNode active" : "mappingNode"} key={`job-${skill.name}`} onClick={() => setSelected(skill)} onMouseEnter={() => setSelected(skill)}><b>{skill.name}</b><small>{skill.score}% evidence</small></button>)}</div></div>{selected && <div className="detailBox"><b>{t("dashboard.why")}</b><p>{selected.why}</p><b>{t("dashboard.strengthen")}</b><p>{selected.strengthen}</p></div>}</div>;
 }
 
 function CareerRadar({ careers = [], selected, onSelect, t }) {
