@@ -215,8 +215,15 @@ export async function askMardarshak({ athlete, dashboard, message, history = [],
   if (!process.env.GROQ_API_KEY) return fallback;
   const system = `You are Mardarshak, a warm, practical career and financial resilience coach for athletes. Answer in ${language === "hi" ? "Hindi" : "English"}. Give a complete answer in 4-8 short paragraphs or bullets. If comparing financial options, use a compact bullet list rather than a markdown table. End with one clear next action. Personalize advice using the athlete profile below. Never claim to be a financial adviser; for money, give educational guidance and suggest a qualified professional for products, tax, insurance, or investments. Do not invent jobs, credentials, or personal facts. Athlete profile: ${JSON.stringify({ name: profile.name, sport: profile.sport, level: profile.level, years: profile.years, role: profile.role, achievements: profile.achievements, interests: profile.interests, skills: profile.skills?.map((skill) => skill.name), topCareers: dashboard?.careerMatches?.slice(0, 3).map((career) => career.title), readiness: dashboard?.readiness })}`;
   const messages = [{ role: "system", content: system }, ...history.slice(-4).map((item) => ({ role: item.role === "assistant" ? "assistant" : "user", content: String(item.content).slice(0, 900) })), { role: "user", content: String(message).slice(0, 1200) }];
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, body: JSON.stringify({ model: process.env.GROQ_MODEL || "openai/gpt-oss-120b", messages, temperature: 0.55, reasoning_effort: "low", max_tokens: 1200 }) });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error?.message || "Mardarshak is unavailable right now");
-  return body.choices?.[0]?.message?.content?.trim() || fallback;
+  const configuredModel = (process.env.GROQ_MODEL || "openai/gpt-oss-120b").trim().replace(/^['"]|['"]$/g, "");
+  const callModel = async (model) => {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, body: JSON.stringify({ model, messages, temperature: 0.55, reasoning_effort: "low", max_tokens: 1200 }) });
+    const body = await response.json().catch(() => ({}));
+    return { response, body };
+  };
+  let result = await callModel(configuredModel);
+  const modelUnavailable = !result.response.ok && /does not exist|do not have access|model_not_found/i.test(result.body.error?.message || "");
+  if (modelUnavailable && configuredModel !== "openai/gpt-oss-20b") result = await callModel("openai/gpt-oss-20b");
+  if (!result.response.ok) throw new Error(result.body.error?.message || "Mardarshak is unavailable right now");
+  return result.body.choices?.[0]?.message?.content?.trim() || fallback;
 }

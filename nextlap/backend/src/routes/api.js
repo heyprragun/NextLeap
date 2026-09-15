@@ -30,7 +30,7 @@ const athleteSchema = z.object({
 
 const financialSchema = athleteSchema.shape.financial;
 
-router.get("/health", (_, res) => res.json({ status: "ok", service: "NextLap API" }));
+router.get("/health", (_, res) => res.json({ status: "ok", service: "NextLap API", groqConfigured: Boolean(process.env.GROQ_API_KEY), model: process.env.GROQ_MODEL || "openai/gpt-oss-120b" }));
 router.get("/careers", (_, res) => res.json(careers));
 router.get("/courses", (req, res) => {
   const { career, skill, difficulty, language } = req.query;
